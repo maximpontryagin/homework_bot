@@ -10,9 +10,6 @@ from exceptions import MissingKyes, ServerStatusNotOK
 from logging.handlers import RotatingFileHandler
 
 
-load_dotenv()
-
-
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
@@ -25,6 +22,8 @@ HOMEWORK_VERDICTS = {
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
+
+load_dotenv()
 
 logging.basicConfig(
     level=logging.DEBUG,
