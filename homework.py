@@ -2,6 +2,7 @@ from http import HTTPStatus
 import requests
 import os
 import logging
+import sys
 import time
 
 from telegram import Bot
@@ -10,14 +11,15 @@ from exceptions import MissingKyes, ServerStatusNotOK
 from logging.handlers import RotatingFileHandler
 
 
-PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
-TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-RETRY_PERIOD = 600
-ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
-HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
-RESPONSE_KEY = 'homeworks'
-HOMEWORK_VERDICTS = {
+PRACTICUM_TOKEN: str = os.getenv('PRACTICUM_TOKEN')
+TELEGRAM_TOKEN: str = os.getenv('TELEGRAM_TOKEN')
+TELEGRAM_CHAT_ID: str = os.getenv('TELEGRAM_CHAT_ID')
+RETRY_PERIOD: int = 600
+ENDPOINT: str = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
+HEADERS: str = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
+RESPONSE_KEY_HOMEWORKS: str = 'homeworks'
+RESPONSE_KEY_CURRENT_DATA: str = 'current_date'
+HOMEWORK_VERDICTS: dict = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
@@ -25,31 +27,23 @@ HOMEWORK_VERDICTS = {
 
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    filename='main.log',
-    filemode='w',
-    encoding='utf-8',
-    format='%(asctime)s, %(levelname)s, %(message)s, %(name)s'
-)
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 handler = RotatingFileHandler(
     'my_logger.log', maxBytes=50000000, backupCount=5)
-logger.addHandler(handler)
+logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
 def check_tokens():
     """Проверка токенов."""
-    if (PRACTICUM_TOKEN is None or TELEGRAM_TOKEN is None
-       or TELEGRAM_CHAT_ID is None):
-        logger.critical('Отсутствуют обязательные переменные окружения')
-        raise MissingKyes
+    return all((PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID))
 
 
 def send_message(bot, message):
     """Отправляет сообщение в Telegram чат."""
     try:
+        logger.info('Началась отправка сообещния в telegram')
         bot.send_message(TELEGRAM_CHAT_ID, message)
         logger.debug('Сообщение отправлено')
     except requests.RequestException as error:
@@ -70,12 +64,14 @@ def get_api_answer(timestamp):
 
 def check_response(response):
     """Проверяет ответ API на соответствие документации."""
-    if (RESPONSE_KEY not in list(response)
-       or type(response.get(RESPONSE_KEY)) is not list
-       or type(response.get(RESPONSE_KEY)[0]) is not dict):
+    logger.info('Начата проверка ответа API на соответсвие документации')
+    if ((RESPONSE_KEY_HOMEWORKS or RESPONSE_KEY_CURRENT_DATA)
+        not in list(response)
+        or not isinstance(response.get(RESPONSE_KEY_HOMEWORKS), list)
+            or not isinstance(response.get(RESPONSE_KEY_HOMEWORKS)[0], dict)):
         raise TypeError(
             'ответ API несоотвествует документации Яндекса')
-    homeworks = response.get(RESPONSE_KEY)
+    homeworks = response.get(RESPONSE_KEY_HOMEWORKS)
     return homeworks
 
 
@@ -94,6 +90,9 @@ def parse_status(homework):
 def main():
     """Основная логика работы бота."""
     check_tokens()
+    if check_tokens() is False:
+        logger.critical('Отсутствуют обязательные переменные окружения')
+        raise MissingKyes
     bot = Bot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
     last_message = ''
@@ -105,7 +104,7 @@ def main():
             message = parse_status(homeworks[0])
             send_message(bot, message)
             last_message = message
-            timestamp = response.get('current_date')
+            timestamp = response.get(RESPONSE_KEY_CURRENT_DATA)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logger.error(message)
@@ -116,4 +115,11 @@ def main():
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.DEBUG,
+        filename='main.log',
+        filemode='w',
+        encoding='utf-8',
+        format='%(asctime)s, %(levelname)s, %(message)s, %(name)s'
+    )
     main()
